@@ -285,14 +285,22 @@ func getRewards(c echo.Context) (*RewardsResponse, error) {
 		return nil, errors.WithMessage(echo.ErrNotFound, "no staking event found")
 	}
 
-	index := deps.SyncManager.ConfirmedMilestoneIndex()
-	if index > event.EndMilestoneIndex() {
-		index = event.EndMilestoneIndex()
+	milestoneIndex, err := parseMilestoneIndexQueryParam(c)
+	if err != nil {
+		return nil, err
+	}
+
+	if milestoneIndex == 0 {
+		milestoneIndex = deps.SyncManager.ConfirmedMilestoneIndex()
+	}
+
+	if milestoneIndex > event.EndMilestoneIndex() {
+		milestoneIndex = event.EndMilestoneIndex()
 	}
 
 	var addresses []string
 	rewardsByAddress := make(map[string]uint64)
-	if err := deps.ParticipationManager.ForEachStakingAddress(eventID, index, func(address iotago.Address, rewards uint64) bool {
+	if err := deps.ParticipationManager.ForEachStakingAddress(eventID, milestoneIndex, func(address iotago.Address, rewards uint64) bool {
 		addr := address.String()
 		addresses = append(addresses, addr)
 		rewardsByAddress[addr] = rewards
@@ -303,12 +311,12 @@ func getRewards(c echo.Context) (*RewardsResponse, error) {
 
 	responseHash := sha256.New()
 	responseHash.Write(eventID[:])
-	binary.Write(responseHash, binary.LittleEndian, uint32(index))
+	binary.Write(responseHash, binary.LittleEndian, uint32(milestoneIndex))
 	responseHash.Write([]byte(event.Staking().Symbol))
 
 	response := &RewardsResponse{
 		Symbol:         event.Staking().Symbol,
-		MilestoneIndex: index,
+		MilestoneIndex: milestoneIndex,
 		TotalRewards:   0,
 		Rewards:        make(map[string]uint64),
 	}
